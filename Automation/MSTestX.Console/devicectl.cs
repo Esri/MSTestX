@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -48,9 +49,39 @@ namespace MSTestX.Console
             return bundleId;
         }
 
-        public static Task LaunchApp(string deviceId, string appId, string? arguments = null, string? stdOutputFile = null, CancellationToken token = default)
+        public static Task LaunchApp(
+            string deviceId,
+            string appId,
+            int timeoutSeconds,
+            IReadOnlyList<string>? appArguments = null,
+            string? stdOutputFile = null,
+            CancellationToken token = default)
         {
-            return DeviceCtl($"device process launch --device {deviceId} --terminate-existing --console {appId} {arguments}", token, stdOutputFile);
+            return DeviceCtl(BuildLaunchArguments(deviceId, appId, timeoutSeconds, appArguments), token, stdOutputFile);
+        }
+
+        internal static IReadOnlyList<string> BuildLaunchArguments(
+            string deviceId,
+            string appId,
+            int timeoutSeconds,
+            IReadOnlyList<string>? appArguments = null)
+        {
+            var launchArguments = new List<string>
+            {
+                "device",
+                "process",
+                "launch",
+                "--device",
+                deviceId,
+                "--terminate-existing",
+                "--console",
+                "--timeout",
+                timeoutSeconds.ToString(CultureInfo.InvariantCulture),
+                appId
+            };
+            if (appArguments is not null)
+                launchArguments.AddRange(appArguments);
+            return launchArguments;
         }
 
         private static async Task<T> DeviceCtl<T>(string arguments, CancellationToken cancellationToken)
@@ -64,11 +95,25 @@ namespace MSTestX.Console
 
         private static Task<string> DeviceCtl(string arguments, CancellationToken cancellationToken, string? stdOutputFile = null)
         {
+            return DeviceCtl(new ProcessStartInfo("xcrun", "devicectl " + arguments), cancellationToken, stdOutputFile);
+        }
+
+        private static Task<string> DeviceCtl(IReadOnlyList<string> arguments, CancellationToken cancellationToken, string? stdOutputFile = null)
+        {
+            var startInfo = new ProcessStartInfo("xcrun");
+            startInfo.ArgumentList.Add("devicectl");
+            foreach (string argument in arguments)
+                startInfo.ArgumentList.Add(argument);
+            return DeviceCtl(startInfo, cancellationToken, stdOutputFile);
+        }
+
+        private static Task<string> DeviceCtl(ProcessStartInfo startInfo, CancellationToken cancellationToken, string? stdOutputFile = null)
+        {
             TaskCompletionSource<string> tcs = new TaskCompletionSource<string>();
             Process xcrun = new Process();
             if (cancellationToken.CanBeCanceled)
                 cancellationToken.Register(() => { tcs.TrySetCanceled(); xcrun.Close(); });
-            xcrun.StartInfo = new ProcessStartInfo("xcrun", "devicectl " + arguments);
+            xcrun.StartInfo = startInfo;
             xcrun.EnableRaisingEvents = true;
             xcrun.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
             xcrun.StartInfo.UseShellExecute = false;

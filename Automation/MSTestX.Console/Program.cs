@@ -8,6 +8,7 @@ using MSTestX.Console.Adb;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
@@ -21,6 +22,8 @@ namespace MSTestX.Console
 {
     class Program 
     {
+        internal const int DefaultDevicectlTimeoutSeconds = 3600;
+
         private static Device? device;
         private static string? apk_id = null;
         private static string? activityName = null;
@@ -81,6 +84,7 @@ Android specific (ignored if using remoteIp):
 iOs specific (MacOS only):
     -apppath <file path>                Path to app to install and launch
     -device <uuid|ecid|serial_number|udid|name|dns_name> The identifier, ECID, serial number, UDID, user-provided name, or DNS name of the device.
+    -devicectlTimeout <seconds>          Full attached app/test-run lifetime before devicectl stops waiting (default: 3600 seconds).
 ");
         }
 
@@ -179,6 +183,13 @@ iOs specific (MacOS only):
 
                 case LaunchMode.AppleApp:
                 {
+                    if (!TryParseDevicectlTimeout(arguments, out int devicectlTimeoutSeconds, out string? timeoutError))
+                    {
+                        System.Console.WriteLine(timeoutError);
+                        testRunCompleted.TrySetResult(1);
+                        return;
+                    }
+
                     if (!OperatingSystem.IsMacOS())
                     {
                         System.Console.WriteLine("iOS apps much be launch from a Mac");
@@ -260,7 +271,13 @@ iOs specific (MacOS only):
 
                     CancellationTokenSource closeAppToken = new CancellationTokenSource();
                     closeAppToken.Token.Register(t => tunnel.Dispose(), null);
-                    var appTask = devicectl.LaunchApp(device, bundleId, "--TestAdapterPort 38300 --AutoExit True", appLogFilename, closeAppToken.Token);
+                    var appTask = devicectl.LaunchApp(
+                        device,
+                        bundleId,
+                        devicectlTimeoutSeconds,
+                        ["--TestAdapterPort", "38300", "--AutoExit", "True"],
+                        appLogFilename,
+                        closeAppToken.Token);
                     _ = appTask.ContinueWith(t =>
                     {
                         if (t.IsCanceled)
@@ -575,7 +592,7 @@ iOs specific (MacOS only):
             }
         }
 
-        private static Dictionary<string, string?> ParseArguments(string[] args)
+        internal static Dictionary<string, string?> ParseArguments(string[] args)
         {
             var result = new Dictionary<string, string?>();
             for (int i = 0; i < args.Length; i++)
@@ -595,6 +612,32 @@ iOs specific (MacOS only):
                     result[key] = value;
             }
             return result;
+        }
+
+        internal static bool TryParseDevicectlTimeout(
+            Dictionary<string, string?> arguments,
+            out int timeoutSeconds,
+            out string? errorMessage)
+        {
+            timeoutSeconds = DefaultDevicectlTimeoutSeconds;
+            errorMessage = null;
+
+            if (!arguments.TryGetValue("devicectlTimeout", out string? value))
+                return true;
+
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                errorMessage = "Option '-devicectlTimeout' requires a positive whole number of seconds.";
+                return false;
+            }
+
+            if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out timeoutSeconds) || timeoutSeconds <= 0)
+            {
+                errorMessage = $"Invalid -devicectlTimeout value '{value}'. Specify a positive 32-bit integer number of seconds.";
+                return false;
+            }
+
+            return true;
         }
 
         private static string MergeTestCaseFilter(string? existingSettingsXml, string filterExpression)
