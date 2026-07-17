@@ -61,6 +61,119 @@ public class ProgramTests
         Assert.AreEqual(LaunchMode.AndroidAdb, Program.GetLaunchMode(arguments));
     }
 
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void GetLaunchMode_DevicectlTimeout_DoesNotAffectModeSelection(bool useRemoteAdapter)
+    {
+        var arguments = Program.ParseArguments(["--devicectlTimeout", "invalid"]);
+        if (useRemoteAdapter)
+            arguments["remoteIp"] = "127.0.0.1:38300";
+        LaunchMode expectedMode = useRemoteAdapter ? LaunchMode.RemoteAdapter : LaunchMode.AndroidAdb;
+
+        Assert.AreEqual(expectedMode, Program.GetLaunchMode(arguments));
+    }
+
+    [DataTestMethod]
+    [DataRow("-devicectlTimeout", "120")]
+    [DataRow("--devicectlTimeout", "240")]
+    public void ParseArguments_ParsesDevicectlTimeout(string option, string value)
+    {
+        var arguments = Program.ParseArguments([option, value]);
+
+        Assert.AreEqual(value, arguments["devicectlTimeout"]);
+    }
+
+    [DataTestMethod]
+    [DataRow(null, 3600)]
+    [DataRow("7200", 7200)]
+    public void TryParseDevicectlTimeout_UsesDefaultOrCustomPositiveInt32(string? value, int expectedTimeoutSeconds)
+    {
+        var arguments = new Dictionary<string, string?>();
+        if (value is not null)
+            arguments["devicectlTimeout"] = value;
+
+        bool result = Program.TryParseDevicectlTimeout(arguments, out int timeoutSeconds, out string? errorMessage);
+
+        Assert.IsTrue(result);
+        Assert.AreEqual(expectedTimeoutSeconds, timeoutSeconds);
+        Assert.IsNull(errorMessage);
+    }
+
+    [DataTestMethod]
+    [DataRow(null)]
+    [DataRow("-1")]
+    public void TryParseDevicectlTimeout_RejectsMissingOrNegativeCliValue(string? value)
+    {
+        var cliArguments = new List<string> { "-apppath", "/tmp/Test.app", "-devicectlTimeout" };
+        if (value is not null)
+            cliArguments.Add(value);
+        var arguments = Program.ParseArguments(cliArguments.ToArray());
+
+        bool result = Program.TryParseDevicectlTimeout(arguments, out _, out string? errorMessage);
+
+        Assert.IsFalse(result);
+        StringAssert.Contains(errorMessage, "-devicectlTimeout");
+        StringAssert.Contains(errorMessage, "requires");
+    }
+
+    [DataTestMethod]
+    [DataRow("not-a-number")]
+    [DataRow("0")]
+    [DataRow("-1")]
+    [DataRow("2147483648")]
+    public void TryParseDevicectlTimeout_RejectsInvalidValue(string value)
+    {
+        var arguments = new Dictionary<string, string?>
+        {
+            ["devicectlTimeout"] = value
+        };
+
+        bool result = Program.TryParseDevicectlTimeout(arguments, out _, out string? errorMessage);
+
+        Assert.IsFalse(result);
+        StringAssert.Contains(errorMessage, "-devicectlTimeout");
+        StringAssert.Contains(errorMessage, value);
+    }
+
+    [TestMethod]
+    public void BuildLaunchArguments_UsesDefaultTimeoutBeforeBundleAndPreservesAppArgumentOrder()
+    {
+        IReadOnlyList<string> arguments = devicectl.BuildLaunchArguments(
+            "device with spaces",
+            "com.example tests",
+            Program.DefaultDevicectlTimeoutSeconds,
+            ["--TestAdapterPort", "38300", "--AutoExit", "True"]);
+
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "device", "process", "launch", "--device", "device with spaces", "--terminate-existing", "--console",
+                "--timeout", "3600", "com.example tests", "--TestAdapterPort", "38300", "--AutoExit", "True"
+            },
+            arguments.ToArray());
+        Assert.AreEqual(1, arguments.Count(argument => argument == "--timeout"));
+    }
+
+    [TestMethod]
+    public void BuildLaunchArguments_UsesCustomTimeoutExactlyOnce()
+    {
+        IReadOnlyList<string> arguments = devicectl.BuildLaunchArguments(
+            "device-2",
+            "com.example.custom",
+            90,
+            ["--first", "one", "--second", "two"]);
+
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "device", "process", "launch", "--device", "device-2", "--terminate-existing", "--console",
+                "--timeout", "90", "com.example.custom", "--first", "one", "--second", "two"
+            },
+            arguments.ToArray());
+        Assert.AreEqual(1, arguments.Count(argument => argument == "--timeout"));
+    }
+
     [TestMethod]
     public void FormatDuration_FormatsSubMillisecondDuration()
     {
