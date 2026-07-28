@@ -84,11 +84,7 @@ run `MSTestX.Console` to get a list of all parameters.
 
 ### Screenshots
 
-![image](https://user-images.githubusercontent.com/1378165/43662635-757007ee-971b-11e8-9b10-63c1d2983385.png)
-
-![image](https://user-images.githubusercontent.com/1378165/43662619-65fa0a4e-971b-11e8-9059-51c86522103d.png)
-
-![image](https://user-images.githubusercontent.com/1378165/43662682-9514fbb8-971b-11e8-9c67-a46ff7290e0d.png)
+![image](https://user-images.githubusercontent.com/1378165/43662635-757007ee-971b-11e8-9b10-63c1d2983385.png) ![image](https://user-images.githubusercontent.com/1378165/43662619-65fa0a4e-971b-11e8-9059-51c86522103d.png) ![image](https://user-images.githubusercontent.com/1378165/43662682-9514fbb8-971b-11e8-9c67-a46ff7290e0d.png)
 
 ## Contributing
 
