@@ -2,7 +2,9 @@
 
 A cross-platform .NET Standard compilation of the MS Test Adapter, a .NET MAUI Unit Test Runner, and a console app to automate testing on devices.
 
-This isn't "just another test framework". This is all based on the Microsoft MSTest Framework, so that your unit tests will run and behave the exact same way as your .NETFramework and UWP Unit Tests. I was fed up with having to deal with different test frameworks all doing things slightly different, and spending too much time abstracting those differences away, and dealing with different report formats.
+This isn't "just another test framework". This is all based on the Microsoft MSTest Framework, so that your unit tests will run and behave the exact same way as your .NET Unit Tests. This allows you to reuse your MSTest code and run it on iOS, Android devices and on Catalyst for MacOS.
+
+MSTestX is used to help test the [ArcGIS Maps SDK for .NET](https://developers.arcgis.com/net/).
 
 ### Features
 
