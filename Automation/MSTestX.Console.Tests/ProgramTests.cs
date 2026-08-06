@@ -16,12 +16,133 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.VisualStudio.TestPlatform.ObjectModel;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace MSTestX.Console.Tests;
 
 [TestClass]
 public class ProgramTests
 {
+    [TestMethod]
+    public void ParseArguments_ForwardsApplicationArgumentsVerbatimAndInOrder()
+    {
+        var parsed = Program.ParseArguments(new[]
+        {
+            "-apppath",
+            "/tmp/My Tests.app",
+            "--",
+            "--tag",
+            "first",
+            "--tag",
+            "second",
+            "--mode",
+            "-diagnostic",
+            "value with spaces",
+            "\"literal quotes\"",
+            "",
+            "--"
+        });
+
+        Assert.AreEqual("/tmp/My Tests.app", parsed.ConsoleOptions["apppath"]);
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "--tag",
+                "first",
+                "--tag",
+                "second",
+                "--mode",
+                "-diagnostic",
+                "value with spaces",
+                "\"literal quotes\"",
+                "",
+                "--"
+            },
+            parsed.ApplicationArguments.ToArray());
+    }
+
+    [TestMethod]
+    public void ParseArguments_AllowsDelimiterWithoutApplicationArguments()
+    {
+        var parsed = Program.ParseArguments(new[] { "-apkid", "com.example.tests", "--" });
+
+        Assert.AreEqual("com.example.tests", parsed.ConsoleOptions["apkid"]);
+        Assert.AreEqual(0, parsed.ApplicationArguments.Count);
+    }
+
+    [TestMethod]
+    public void ParseArguments_PreservesLegacyBehaviorWithoutDelimiter()
+    {
+        var parsed = Program.ParseArguments(new[]
+        {
+            "-apppath",
+            "/tmp/Test.app",
+            "-device",
+            "My Phone",
+            "--filter",
+            "TestCategory=Smoke"
+        });
+
+        Assert.AreEqual(3, parsed.ConsoleOptions.Count);
+        Assert.AreEqual("/tmp/Test.app", parsed.ConsoleOptions["apppath"]);
+        Assert.AreEqual("My Phone", parsed.ConsoleOptions["device"]);
+        Assert.AreEqual("TestCategory=Smoke", parsed.ConsoleOptions["filter"]);
+        Assert.AreEqual(0, parsed.ApplicationArguments.Count);
+    }
+
+    [TestMethod]
+    public void ParseArguments_RejectsApplicationArgumentsForAndroid()
+    {
+        var exception = Assert.ThrowsException<ArgumentException>(
+            () => Program.ParseArguments(new[] { "-apkid", "com.example.tests", "--", "--tag", "smoke" }));
+
+        StringAssert.Contains(exception.Message, "Android");
+        StringAssert.Contains(exception.Message, "-apppath");
+    }
+
+    [TestMethod]
+    public void ParseArguments_RejectsApplicationArgumentsForRemoteLaunch()
+    {
+        var exception = Assert.ThrowsException<ArgumentException>(
+            () => Program.ParseArguments(new[]
+            {
+                "-remoteIp",
+                "127.0.0.1:38300",
+                "-apppath",
+                "/tmp/Test.app",
+                "--",
+                "--tag",
+                "smoke"
+            }));
+
+        StringAssert.Contains(exception.Message, "-remoteIp");
+        StringAssert.Contains(exception.Message, "caller-launched");
+    }
+
+    [DataTestMethod]
+    [DataRow("--TestAdapterPort")]
+    [DataRow("-testadapterport")]
+    [DataRow("--AUTOEXIT")]
+    [DataRow("-autoexit")]
+    public void ParseArguments_RejectsReservedApplicationArgumentOverrides(string reservedArgument)
+    {
+        var exception = Assert.ThrowsException<ArgumentException>(
+            () => Program.ParseArguments(new[]
+            {
+                "-apppath",
+                "/tmp/Test.app",
+                "--",
+                "--tag",
+                "smoke",
+                reservedArgument,
+                "caller-value"
+            }));
+
+        StringAssert.Contains(exception.Message, reservedArgument);
+        StringAssert.Contains(exception.Message, "reserved");
+        StringAssert.Contains(exception.Message, "cannot be overridden");
+    }
+
     [TestMethod]
     public void GetLaunchMode_UsesRemoteAdapter_WhenRemoteIpIsProvided()
     {

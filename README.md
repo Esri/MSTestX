@@ -65,6 +65,16 @@ dotnet tool install --global MSTestX.Console --version 0.36.0
 MSTestX.Console -apppath [path-to-generated .app application] 
 ```
 
+For a physical iOS device, pass application arguments after the first standalone `--`:
+```
+MSTestX.Console -apppath [path-to-generated .app application] -device [device identifier] -- --suite Smoke --display-name "Login flow" --quoted '"literal quotes"' --empty ""
+```
+The invoking shell tokenizes quoted values first. `MSTestX.Console` forwards every resulting argument after `--` verbatim and in order, including repeated or dash-prefixed values, values containing spaces or literal quotes, and empty values. Quote or escape each value according to your shell.
+
+`--TestAdapterPort` and `--AutoExit` are reserved application arguments. `MSTestX.Console` always supplies them first to own the test connection and application lifecycle and rejects caller-supplied overrides, regardless of casing or whether the key uses one or two leading dashes.
+
+Application-argument passthrough is supported only with physical Apple `-apppath` launches. It is rejected for Android, `-remoteIp`, and `-waitForRemote`. Mac Catalyst remains caller-launched and uses `-remoteIp` without passthrough.
+
 ### Mac-Catalyst (MacOS only)
 With MacCatalyst you simply launch the app and connect to local-host using the `-remoteIp` parameter pointing to localhost, which will also work with any remote device running the unit test app.
 ```
