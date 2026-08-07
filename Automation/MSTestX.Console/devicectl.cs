@@ -30,7 +30,7 @@ namespace MSTestX.Console
         {
             try
             {
-                var version = await DeviceCtl("--version", CancellationToken.None);
+                _ = await DeviceCtl(new[] { "--version" }, CancellationToken.None);
                 return true;
             }
             catch
@@ -41,17 +41,23 @@ namespace MSTestX.Console
 
         public static Task<DeviceCtl.DeviceDetails> GetDeviceDetails(string deviceId)
         {
-            return DeviceCtl<DeviceCtl.DeviceDetails>($"device info details --device \"{deviceId}\"", CancellationToken.None);
+            return DeviceCtl<DeviceCtl.DeviceDetails>(
+                new[] { "device", "info", "details", "--device", deviceId },
+                CancellationToken.None);
         }
 
         public static Task<DeviceCtl.Devices> GetConnectedAppleDevicesAsync()
         {
-            return DeviceCtl<DeviceCtl.Devices>("list devices --timeout 5", CancellationToken.None);
+            return DeviceCtl<DeviceCtl.Devices>(
+                new[] { "list", "devices", "--timeout", "5" },
+                CancellationToken.None);
         }
 
         public static async Task<string> InstallApp(string deviceId, string appPath)
         {
-            var output = await DeviceCtl($"device install app --device {deviceId} {appPath}", CancellationToken.None);
+            var output = await DeviceCtl(
+                new[] { "device", "install", "app", "--device", deviceId, appPath },
+                CancellationToken.None);
             var idLine = output.Split(Environment.NewLine).Where(s => s.Contains("bundleID: ")).FirstOrDefault();
             if(string.IsNullOrEmpty(idLine))
             {
@@ -62,32 +68,97 @@ namespace MSTestX.Console
             return bundleId;
         }
 
-        public static Task LaunchApp(string deviceId, string appId, string? arguments = null, string? stdOutputFile = null, CancellationToken token = default)
+        public static Task LaunchApp(
+            string deviceId,
+            string appId,
+            IReadOnlyList<string>? applicationArguments = null,
+            string? stdOutputFile = null,
+            CancellationToken token = default)
         {
-            return DeviceCtl($"device process launch --device {deviceId} --terminate-existing --console {appId} {arguments}", token, stdOutputFile);
+            return DeviceCtl(
+                CreateLaunchProcessStartInfo(deviceId, appId, applicationArguments ?? Array.Empty<string>()),
+                token,
+                stdOutputFile);
         }
 
-        private static async Task<T> DeviceCtl<T>(string arguments, CancellationToken cancellationToken)
+        internal static ProcessStartInfo CreateLaunchProcessStartInfo(
+            string deviceId,
+            string appId,
+            IReadOnlyList<string> applicationArguments)
+        {
+            var arguments = new List<string>
+            {
+                "device",
+                "process",
+                "launch",
+                "--device",
+                deviceId,
+                "--terminate-existing",
+                "--console",
+                appId,
+                "--",
+                "--TestAdapterPort",
+                "38300",
+                "--AutoExit",
+                "True"
+            };
+            arguments.AddRange(applicationArguments);
+            return CreateProcessStartInfo(arguments);
+        }
+
+        internal static ProcessStartInfo CreateProcessStartInfo(IReadOnlyList<string> arguments)
+        {
+            var startInfo = new ProcessStartInfo("xcrun")
+            {
+                WindowStyle = ProcessWindowStyle.Hidden,
+                UseShellExecute = false,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true
+            };
+            startInfo.ArgumentList.Add("devicectl");
+            foreach (var argument in arguments)
+                startInfo.ArgumentList.Add(argument);
+
+            return startInfo;
+        }
+
+        private static async Task<T> DeviceCtl<T>(
+            IReadOnlyList<string> arguments,
+            CancellationToken cancellationToken)
         {
             var tmpPath = System.IO.Path.GetTempFileName();
-            await DeviceCtl($"{arguments} --json-output \"{tmpPath}\"", cancellationToken);
+            var jsonArguments = new List<string>(arguments)
+            {
+                "--json-output",
+                tmpPath
+            };
+            await DeviceCtl(jsonArguments, cancellationToken);
             var json = System.IO.File.ReadAllText(tmpPath);
             File.Delete(tmpPath);
             return System.Text.Json.JsonSerializer.Deserialize<T>(json)!;
         }
 
-        private static Task<string> DeviceCtl(string arguments, CancellationToken cancellationToken, string? stdOutputFile = null)
+        private static Task<string> DeviceCtl(
+            IReadOnlyList<string> arguments,
+            CancellationToken cancellationToken,
+            string? stdOutputFile = null)
+        {
+            return DeviceCtl(CreateProcessStartInfo(arguments), cancellationToken, stdOutputFile);
+        }
+
+        private static Task<string> DeviceCtl(
+            ProcessStartInfo startInfo,
+            CancellationToken cancellationToken,
+            string? stdOutputFile = null)
         {
             TaskCompletionSource<string> tcs = new TaskCompletionSource<string>();
-            Process xcrun = new Process();
+            Process xcrun = new Process
+            {
+                StartInfo = startInfo
+            };
             if (cancellationToken.CanBeCanceled)
                 cancellationToken.Register(() => { tcs.TrySetCanceled(); xcrun.Close(); });
-            xcrun.StartInfo = new ProcessStartInfo("xcrun", "devicectl " + arguments);
             xcrun.EnableRaisingEvents = true;
-            xcrun.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-            xcrun.StartInfo.UseShellExecute = false;
-            xcrun.StartInfo.RedirectStandardError = true;
-            xcrun.StartInfo.RedirectStandardOutput = true;
             StringBuilder sb = new StringBuilder();
             object outputLock = new object();
             PrepareOutputFile(stdOutputFile);

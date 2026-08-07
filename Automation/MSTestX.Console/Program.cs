@@ -33,6 +33,21 @@ using System.Xml;
 
 namespace MSTestX.Console
 {
+    internal sealed class ParsedArguments
+    {
+        public ParsedArguments(
+            IReadOnlyDictionary<string, string?> consoleOptions,
+            IReadOnlyList<string> applicationArguments)
+        {
+            ConsoleOptions = consoleOptions;
+            ApplicationArguments = applicationArguments;
+        }
+
+        public IReadOnlyDictionary<string, string?> ConsoleOptions { get; }
+
+        public IReadOnlyList<string> ApplicationArguments { get; }
+    }
+
     class Program 
     {
         private static Device? device;
@@ -46,7 +61,7 @@ namespace MSTestX.Console
         private static CancellationTokenSource? processExitCancellationTokenSource;
         private static TaskCompletionSource<int> testRunCompleted = new TaskCompletionSource<int>();
 
-        internal static LaunchMode GetLaunchMode(Dictionary<string, string?> arguments)
+        internal static LaunchMode GetLaunchMode(IReadOnlyDictionary<string, string?> arguments)
         {
             if (arguments.ContainsKey("remoteIp") || arguments.ContainsKey("waitForRemote"))
                 return LaunchMode.RemoteAdapter;
@@ -71,7 +86,19 @@ namespace MSTestX.Console
                 PrintUsage();
                 return;
             }
-            await RunTest(ParseArguments(args));
+            ParsedArguments arguments;
+            try
+            {
+                arguments = ParseArguments(args);
+            }
+            catch (ArgumentException ex)
+            {
+                System.Console.Error.WriteLine("ERROR: " + ex.Message);
+                Environment.ExitCode = 1;
+                return;
+            }
+
+            await RunTest(arguments.ConsoleOptions, arguments.ApplicationArguments);
             var exitCode = await testRunCompleted.Task;
             Environment.Exit(exitCode);
         }
@@ -92,13 +119,34 @@ Android specific (ignored if using remoteIp):
     -activity <activity id>             Activity to launch (if not provided, auto-discovered from manifest)
     -pin <pin code>                     Pin to use to unlock your phone (or empty to just unlock phone with no pin)
 
-iOs specific (MacOS only):
+iOS physical-device specific (macOS only):
     -apppath <file path>                Path to app to install and launch
     -device <uuid|ecid|serial_number|udid|name|dns_name> The identifier, ECID, serial number, UDID, user-provided name, or DNS name of the device.
+
+Application arguments for physical iOS launches:
+    Syntax: MSTestX.Console <console-options> -- <app-arg-0> <app-arg-1> ...
+    MSTestX.Console -apppath MyTests.app -- --suite Smoke --display-name ""Login flow""
+    MSTestX.Console -apppath MyTests.app -- --quoted '""literal quotes""' --empty """"
+
+    The first standalone -- ends Console option parsing. Every following shell-tokenized
+    argument is forwarded verbatim and in order. Quote or escape values according to your
+    shell to preserve spaces, literal quotes, or empty values.
+
+    With 'dotnet tool run', add its outer separator before Console options:
+    dotnet tool run MSTestX.Console -- <console-options> -- <app-args>
+    MSTestX.Console adds the separate CoreDevice child-argument separator internally.
+
+    --TestAdapterPort and --AutoExit are reserved. MSTestX.Console supplies them first to
+    manage the test connection and application lifetime and rejects caller overrides.
+
+    Application arguments are unsupported for Android, -remoteIp, and -waitForRemote.
+    Mac Catalyst remains caller-launched and must use -remoteIp without passthrough.
 ");
         }
 
-        static async Task RunTest(Dictionary<string, string?> arguments)
+        static async Task RunTest(
+            IReadOnlyDictionary<string, string?> arguments,
+            IReadOnlyList<string> applicationArguments)
         {
             processExitCancellationTokenSource = new CancellationTokenSource();
 
@@ -274,7 +322,7 @@ iOs specific (MacOS only):
 
                     CancellationTokenSource closeAppToken = new CancellationTokenSource();
                     closeAppToken.Token.Register(t => tunnel.Dispose(), null);
-                    var appTask = devicectl.LaunchApp(device, bundleId, "--TestAdapterPort 38300 --AutoExit True", appLogFilename, closeAppToken.Token);
+                    var appTask = devicectl.LaunchApp(device, bundleId, applicationArguments, appLogFilename, closeAppToken.Token);
                     _ = appTask.ContinueWith(t =>
                     {
                         if (t.IsCanceled)
@@ -589,17 +637,20 @@ iOs specific (MacOS only):
             }
         }
 
-        private static Dictionary<string, string?> ParseArguments(string[] args)
+        internal static ParsedArguments ParseArguments(string[] args)
         {
             var result = new Dictionary<string, string?>();
-            for (int i = 0; i < args.Length; i++)
+            var delimiterIndex = Array.IndexOf(args, "--");
+            var consoleArgumentCount = delimiterIndex >= 0 ? delimiterIndex : args.Length;
+
+            for (int i = 0; i < consoleArgumentCount; i++)
             {
                 string? key = null;
                 string? value = null;
                 if (args[i].StartsWith("-"))
                 {
                     key = args[i].TrimStart('-');
-                    if (i < args.Length - 1 && !args[i + 1].StartsWith("-"))
+                    if (i < consoleArgumentCount - 1 && !args[i + 1].StartsWith("-"))
                     {
                         i++;
                         value = args[i];
@@ -608,7 +659,45 @@ iOs specific (MacOS only):
                 if (key != null)
                     result[key] = value;
             }
-            return result;
+
+            IReadOnlyList<string> applicationArguments = delimiterIndex >= 0
+                ? args.Skip(delimiterIndex + 1).ToArray()
+                : Array.Empty<string>();
+
+            if (applicationArguments.Count > 0)
+            {
+                switch (GetLaunchMode(result))
+                {
+                    case LaunchMode.AppleApp:
+                        ValidateApplicationArguments(applicationArguments);
+                        break;
+                    case LaunchMode.RemoteAdapter:
+                        throw new ArgumentException(
+                            "Application arguments after '--' are not supported with -remoteIp or -waitForRemote. " +
+                            "Remote applications, including Mac Catalyst, remain caller-launched.");
+                    case LaunchMode.AndroidAdb:
+                        throw new ArgumentException(
+                            "Application arguments after '--' are only supported for physical Apple launches using -apppath; " +
+                            "Android launch mode does not support passthrough.");
+                }
+            }
+
+            return new ParsedArguments(result, applicationArguments);
+        }
+
+        private static void ValidateApplicationArguments(IReadOnlyList<string> applicationArguments)
+        {
+            foreach (var argument in applicationArguments)
+            {
+                var normalizedArgument = argument.TrimStart('-');
+                if (string.Equals(normalizedArgument, "TestAdapterPort", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(normalizedArgument, "AutoExit", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new ArgumentException(
+                        $"Application argument '{argument}' is reserved and cannot be overridden. " +
+                        "MSTestX.Console manages --TestAdapterPort and --AutoExit.");
+                }
+            }
         }
 
         private static string MergeTestCaseFilter(string? existingSettingsXml, string filterExpression)
