@@ -27,7 +27,18 @@ public class DeviceCtlTests
         var startInfo = devicectl.CreateLaunchProcessStartInfo(
             "My Phone",
             "com.example.my tests",
-            new[] { "--tag", "first", "--tag", "second", "", "\"quoted\"" });
+            new[]
+            {
+                "--tag",
+                "first",
+                "--tag",
+                "second",
+                "--mode",
+                "-diagnostic",
+                "value with spaces",
+                "",
+                "\"literal quotes\""
+            });
 
         Assert.AreEqual("xcrun", startInfo.FileName);
         CollectionAssert.AreEqual(
@@ -42,6 +53,7 @@ public class DeviceCtlTests
                 "--terminate-existing",
                 "--console",
                 "com.example.my tests",
+                "--",
                 "--TestAdapterPort",
                 "38300",
                 "--AutoExit",
@@ -50,8 +62,11 @@ public class DeviceCtlTests
                 "first",
                 "--tag",
                 "second",
+                "--mode",
+                "-diagnostic",
+                "value with spaces",
                 "",
-                "\"quoted\""
+                "\"literal quotes\""
             },
             startInfo.ArgumentList.ToArray());
     }
@@ -76,6 +91,7 @@ public class DeviceCtlTests
                 "--terminate-existing",
                 "--console",
                 "com.example.tests",
+                "--",
                 "--TestAdapterPort",
                 "38300",
                 "--AutoExit",

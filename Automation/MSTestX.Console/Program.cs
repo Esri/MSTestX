@@ -132,6 +132,10 @@ Application arguments for physical iOS launches:
     argument is forwarded verbatim and in order. Quote or escape values according to your
     shell to preserve spaces, literal quotes, or empty values.
 
+    With 'dotnet tool run', add its outer separator before Console options:
+    dotnet tool run MSTestX.Console -- <console-options> -- <app-args>
+    MSTestX.Console adds the separate CoreDevice child-argument separator internally.
+
     --TestAdapterPort and --AutoExit are reserved. MSTestX.Console supplies them first to
     manage the test connection and application lifetime and rejects caller overrides.
 

@@ -71,6 +71,8 @@ MSTestX.Console -apppath [path-to-generated .app application] -device [device id
 ```
 The invoking shell tokenizes quoted values first. `MSTestX.Console` forwards every resulting argument after `--` verbatim and in order, including repeated or dash-prefixed values, values containing spaces or literal quotes, and empty values. Quote or escape each value according to your shell.
 
+Direct `dotnet tool run` callers must also provide dotnet's outer separator: `dotnet tool run MSTestX.Console -- <console-options> -- <app-arguments>`. `MSTestX.Console` owns and inserts CoreDevice's separate child-argument separator internally.
+
 `--TestAdapterPort` and `--AutoExit` are reserved application arguments. `MSTestX.Console` always supplies them first to own the test connection and application lifecycle and rejects caller-supplied overrides, regardless of casing or whether the key uses one or two leading dashes.
 
 Application-argument passthrough is supported only with physical Apple `-apppath` launches. It is rejected for Android, `-remoteIp`, and `-waitForRemote`. Mac Catalyst remains caller-launched and uses `-remoteIp` without passthrough.

@@ -96,6 +96,7 @@ namespace MSTestX.Console
                 "--terminate-existing",
                 "--console",
                 appId,
+                "--",
                 "--TestAdapterPort",
                 "38300",
                 "--AutoExit",
