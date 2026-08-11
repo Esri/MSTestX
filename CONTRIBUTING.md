@@ -41,6 +41,25 @@ Expect a good amount of feedback as part of any pull request.
   * If a PR is rejected because it would cause a breaking change or includes a feature that is out of scope, it will be closed permanently.
   * If a PR is rejected because the proposed changes failed code review or testing, please review feedback, fix and reopen as necessary.  
 
+### Maintainer NuGet releases
+
+Push `MSTestX.UnitTestRunner-v<semver>` or
+`MSTestX.TestAdapter-v<semver>` to publish exactly one package. Tags must use
+strict SemVer without build metadata and point to a commit on `main`. The tag
+version is authoritative and overrides project version properties.
+
+Protect the `nuget-release` environment with reviewers and release-tag
+restrictions. Add environment secrets `BASE64_ENCODED_PFX` and `PFX_PASSWORD`
+plus variable `NUGET_USER`. Configure NuGet trusted publishing for repository
+`Esri/MSTestX`, workflow `publish_mstestx_nuget.yml`, and environment
+`nuget-release`.
+
+Protect release tags from updates or deletion. Never reuse a tag or bypass a
+failed release with `--skip-duplicate`; inspect NuGet.org and publish a new
+version if the original push may have succeeded. A primary package push also
+submits its symbol package, whose validation completes asynchronously on
+NuGet.org.
+
 ### License
 
 By contributing your code, you agree to license your contribution under the terms of the [Apache License 2.0](license.txt) license.

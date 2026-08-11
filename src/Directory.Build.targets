@@ -1,28 +1,27 @@
 <Project>
 
   <Target Name="SignAssemblies"
-          Condition="Exists($(CertificatePath)) AND '$(CertificatePassword)'!=''"
+          Condition="'$(CertificatePath)' != '' OR '$(MSTESTX_PFX_PASSWORD)' != ''"
           BeforeTargets="CopyFilesToOutputDirectory"
-          DependsOnTargets="ComputeIntermediateSatelliteAssemblies"> 
-    <PropertyGroup>
-      <SignToolPath>$(ProgramFiles)\Windows Kits\10\bin\x64\signtool.exe</SignToolPath>
-      <SignToolPath Condition="!Exists($(SignToolPath))">$(ProgramFiles)\Windows Kits\10\bin\10.0.22000.0\x64\signtool.exe</SignToolPath>
-      <SignToolPath Condition="!Exists($(SignToolPath))">$(ProgramFiles)\Windows Kits\10\bin\10.0.19041.0\x64\signtool.exe</SignToolPath>
-      <SignToolPath Condition="!Exists($(SignToolPath))">$(ProgramFiles)\Windows Kits\10\bin\10.0.18362.0\x64\signtool.exe</SignToolPath>
-      <SignToolPath Condition="!Exists($(SignToolPath))">$(ProgramFiles)\Windows Kits\10\bin\10.0.17134.0\x64\signtool.exe</SignToolPath>
-      <SignToolPath Condition="!Exists($(SignToolPath))">$(WindowsSDK80Path)bin\x64\signtool.exe</SignToolPath>
-      <SignToolPath Condition="!Exists($(SignToolPath))">signtool.exe</SignToolPath> <!-- fallback to use PATH environment -->  
-    </PropertyGroup>
+          DependsOnTargets="ComputeIntermediateSatelliteAssemblies">
+    <Error Condition="'$(CertificatePath)' == ''"
+           Text="CertificatePath is required when MSTESTX_PFX_PASSWORD is supplied." />
+    <Error Condition="'$(MSTESTX_PFX_PASSWORD)' == ''"
+           Text="The MSTESTX_PFX_PASSWORD environment variable is required when CertificatePath is supplied." />
+    <Error Condition="!Exists('$(CertificatePath)')"
+           Text="The assembly-signing certificate '$(CertificatePath)' does not exist." />
+    <Error Condition="'$(SignToolPath)' == '' OR !Exists('$(SignToolPath)')"
+           Text="SignToolPath must point to an existing signtool.exe when assembly signing is enabled." />
     <ItemGroup>
       <FilesToSign Include="@(IntermediateAssembly)" />
       <FilesToSign Include="@(IntermediateRefAssembly)" />
       <FilesToSign Include="@(IntermediateSatelliteAssembliesWithTargetPath)" />
       <FilesToSignFiltered Include="@(FilesToSign)" Condition="Exists(%(FilesToSign.Identity))" />
     </ItemGroup>
-    <Exec Condition="'@(FilesToSignFiltered->Count())' > 0" Command="&quot;$(SignToolPath)&quot; sign /v /fd SHA1 /f &quot;$(CertificatePath)&quot; /p &quot;$(CertificatePassword)&quot; /tr http://timestamp.digicert.com /td SHA1 &quot;%(FilesToSignFiltered.Identity)&quot;"
-          WorkingDirectory="$(ProjectDir)" EchoOff="true" />
-    <Exec Condition="'@(FilesToSignFiltered->Count())' > 0" Command="&quot;$(SignToolPath)&quot; sign /v /as /d &quot;Authorization Summary&quot; /fd SHA256 /f &quot;$(CertificatePath)&quot; /p &quot;$(CertificatePassword)&quot; /tr http://timestamp.digicert.com /td SHA256 &quot;%(FilesToSignFiltered.Identity)&quot;"
-          WorkingDirectory="$(ProjectDir)" EchoOff="true" />
+    <Exec Condition="'@(FilesToSignFiltered->Count())' > 0"
+          Command="pwsh -NoLogo -NoProfile -NonInteractive -Command &quot;&amp; { $password = [Environment]::GetEnvironmentVariable('MSTESTX_PFX_PASSWORD'); &amp; '$(SignToolPath)' sign /v /fd SHA256 /f '$(CertificatePath)' /p $password /tr http://timestamp.digicert.com /td SHA256 '%(FilesToSignFiltered.Identity)'; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; &amp; '$(SignToolPath)' verify /pa /all /v '%(FilesToSignFiltered.Identity)'; exit $LASTEXITCODE }&quot;"
+          WorkingDirectory="$(ProjectDir)"
+          EchoOff="true" />
   </Target>
 
 </Project>
