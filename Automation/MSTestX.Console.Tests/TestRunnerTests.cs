@@ -17,12 +17,174 @@ using Microsoft.VisualStudio.TestPlatform.ObjectModel.Client;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace MSTestX.Console.Tests;
 
 [TestClass]
 public class TestRunnerTests
 {
+    private static readonly Uri ExecutorUri = new("executor://mstestx");
+    private static readonly TestProperty TestCategoryProperty = TestProperty.Register(
+        "MSTestX.Console.Tests.TestCategory",
+        "TestCategory",
+        typeof(string[]),
+        typeof(TestRunnerTests));
+
+    [TestMethod]
+    public void SelectTests_ReturnsAllDiscoveredTests_WhenFilterIsMissing()
+    {
+        var tests = new[]
+        {
+            CreateTestCase("Samples.First", Guid.NewGuid()),
+            CreateTestCase("Samples.Second", Guid.NewGuid())
+        };
+
+        var selected = TestCaseSelector.SelectTests(tests, "<RunSettings />");
+
+        CollectionAssert.AreEqual(tests.Select(test => test.Id).ToArray(), selected.Select(test => test.Id).ToArray());
+    }
+
+    [TestMethod]
+    public void SelectTests_MatchesExactFullyQualifiedName()
+    {
+        var expected = CreateTestCase("Samples.ExactTest", Guid.NewGuid());
+        var tests = new[]
+        {
+            CreateTestCase("Samples.OtherTest", Guid.NewGuid()),
+            expected
+        };
+
+        var selected = TestCaseSelector.SelectTests(
+            tests,
+            Settings("FullyQualifiedName=Samples.ExactTest"));
+
+        Assert.AreEqual(1, selected.Count);
+        Assert.AreEqual(expected.Id, selected[0].Id);
+    }
+
+    [TestMethod]
+    public void SelectTests_MatchesContainsFilter()
+    {
+        var first = CreateTestCase("Samples.Mapping.First", Guid.NewGuid());
+        var second = CreateTestCase("Samples.Mapping.Second", Guid.NewGuid());
+        var tests = new[]
+        {
+            first,
+            CreateTestCase("Samples.Geometry.Test", Guid.NewGuid()),
+            second
+        };
+
+        var selected = TestCaseSelector.SelectTests(
+            tests,
+            Settings("FullyQualifiedName~Mapping"));
+
+        CollectionAssert.AreEqual(
+            new[] { first.Id, second.Id },
+            selected.Select(test => test.Id).ToArray());
+    }
+
+    [TestMethod]
+    public void SelectTests_MatchesCategoriesAndTraits()
+    {
+        var smoke = CreateTestCase(
+            "Samples.Smoke",
+            Guid.NewGuid(),
+            new Trait("Owner", "Maps"));
+        var regression = CreateTestCase(
+            "Samples.Regression",
+            Guid.NewGuid(),
+            new Trait("Owner", "Maps"));
+        smoke.SetPropertyValue(TestCategoryProperty, new[] { "Smoke", "Fast" });
+        regression.SetPropertyValue(TestCategoryProperty, new[] { "Regression" });
+
+        var selected = TestCaseSelector.SelectTests(
+            new[] { smoke, regression },
+            Settings("TestCategory=Smoke&Owner=Maps"));
+
+        Assert.AreEqual(1, selected.Count);
+        Assert.AreEqual(smoke.Id, selected[0].Id);
+    }
+
+    [TestMethod]
+    public void SelectTests_MatchesBooleanAndEscapedExpressions()
+    {
+        var escaped = CreateTestCase(
+            "Samples.Name|With(Characters)",
+            Guid.NewGuid(),
+            new Trait("TestCategory", "Smoke"));
+        var fallback = CreateTestCase(
+            "Samples.Fallback",
+            Guid.NewGuid(),
+            new Trait("TestCategory", "Regression"));
+        var excluded = CreateTestCase(
+            "Samples.Excluded",
+            Guid.NewGuid(),
+            new Trait("TestCategory", "Smoke"));
+
+        var selected = TestCaseSelector.SelectTests(
+            new[] { escaped, fallback, excluded },
+            Settings(@"(FullyQualifiedName=Samples.Name\|With\(Characters\)&TestCategory=Smoke)|FullyQualifiedName=Samples.Fallback"));
+
+        CollectionAssert.AreEqual(
+            new[] { escaped.Id, fallback.Id },
+            selected.Select(test => test.Id).ToArray());
+    }
+
+    [TestMethod]
+    public void SelectTests_ThrowsActionableError_ForInvalidFilter()
+    {
+        const string invalidFilter = "(FullyQualifiedName=Samples.Test";
+
+        var exception = Assert.ThrowsException<FormatException>(
+            () => TestCaseSelector.SelectTests(
+                new[] { CreateTestCase("Samples.Test", Guid.NewGuid()) },
+                Settings(invalidFilter)));
+
+        StringAssert.Contains(exception.Message, "Invalid test case filter");
+        StringAssert.Contains(exception.Message, invalidFilter);
+        StringAssert.Contains(exception.Message, "Incorrect format");
+    }
+
+    [TestMethod]
+    public void SelectTests_ReturnsEmptyList_WhenValidFilterMatchesNothing()
+    {
+        var selected = TestCaseSelector.SelectTests(
+            new[] { CreateTestCase("Samples.Test", Guid.NewGuid()) },
+            Settings("FullyQualifiedName=Samples.Missing"));
+
+        Assert.AreEqual(0, selected.Count);
+    }
+
+    [TestMethod]
+    public void SelectTests_MatchesAllDataRowsSharingFullyQualifiedName()
+    {
+        var firstRow = CreateTestCase("Samples.DataTest", Guid.NewGuid());
+        var secondRow = CreateTestCase("Samples.DataTest", Guid.NewGuid());
+
+        var selected = TestCaseSelector.SelectTests(
+            new[] { firstRow, secondRow, CreateTestCase("Samples.Other", Guid.NewGuid()) },
+            Settings("FullyQualifiedName=Samples.DataTest"));
+
+        CollectionAssert.AreEqual(
+            new[] { firstRow.Id, secondRow.Id },
+            selected.Select(test => test.Id).ToArray());
+    }
+
+    [TestMethod]
+    public void SelectTests_MatchesSingleDataRowById()
+    {
+        var firstRow = CreateTestCase("Samples.DataTest", Guid.NewGuid());
+        var secondRow = CreateTestCase("Samples.DataTest", Guid.NewGuid());
+
+        var selected = TestCaseSelector.SelectTests(
+            new[] { firstRow, secondRow },
+            Settings($"Id={secondRow.Id}"));
+
+        Assert.AreEqual(1, selected.Count);
+        Assert.AreEqual(secondRow.Id, selected[0].Id);
+    }
+
     [TestMethod]
     public void ShouldWriteTestResult_ReturnsTrue_ForTopLevelResult()
     {
@@ -233,5 +395,25 @@ public class TestRunnerTests
         StringAssert.Contains(exception.Message, "phase=adapter disconnected");
         Assert.AreSame(diagnostics, exception.Diagnostics);
         Assert.IsInstanceOfType(exception.InnerException, typeof(System.IO.EndOfStreamException));
+    }
+
+    private static TestCase CreateTestCase(string fullyQualifiedName, Guid id, params Trait[] traits)
+    {
+        var testCase = new TestCase(fullyQualifiedName, ExecutorUri, "Tests.dll")
+        {
+            Id = id
+        };
+
+        foreach (var trait in traits)
+        {
+            testCase.Traits.Add(trait);
+        }
+
+        return testCase;
+    }
+
+    private static string Settings(string filter)
+    {
+        return $"<RunSettings><RunConfiguration><TestCaseFilter>{System.Security.SecurityElement.Escape(filter)}</TestCaseFilter></RunConfiguration></RunSettings>";
     }
 }

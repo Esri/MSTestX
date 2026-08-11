@@ -92,6 +92,14 @@ MSTestX.Console -remoteIp 127.0.0.1:38300
  - `-deviceid <Android Device Serial Number>`    Android: If more than one device is connected, specifies which device to use
  - `-device <uuid|ecid|serial_number|udid|name|dns_name>`   iOS: The identifier, ECID, serial number, UDID, user-provided name, or DNS name of the device, if more than one device is connected.
 
+### Filtering tests
+Pass the VSTest filter expression directly to `MSTestX.Console` and quote it so the shell does not interpret characters such as `&`, `|`, or parentheses:
+```
+MSTestX.Console -remoteIp 127.0.0.1:38300 --filter 'FullyQualifiedName=MyTests.Basemaps.SwitchesPortal'
+MSTestX.Console -remoteIp 127.0.0.1:38300 --filter 'TestCategory=Smoke&FullyQualifiedName~Basemaps'
+```
+The examples use POSIX shell quoting; use the equivalent quoting for your shell (for example, double quotes in Windows Command Prompt). A valid filter that matches no discovered tests runs zero tests and does not fall back to the full suite. For data-driven tests, `FullyQualifiedName` can match multiple unfolded rows that share the same name. Use `Id=<discovered-test-guid>` when one specific unfolded row must be selected.
+
 run `MSTestX.Console` to get a list of all parameters.
 
 ### Screenshots
