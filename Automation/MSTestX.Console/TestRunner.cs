@@ -319,7 +319,7 @@ namespace MSTestX.Console
                 else if (msg.MessageType == MessageType.DiscoveryComplete)
                 {
                     var dcp = JsonDataSerializer.Instance.DeserializePayload<DiscoveryCompletePayload>(msg);
-                    var selectedTests = dcp.LastDiscoveredTests.ToList();
+                    var selectedTests = TestCaseSelector.SelectTests(dcp.LastDiscoveredTests, settingsXml);
                     diagnostics.RecordSelectedTests(selectedTests.Count);
                     diagnostics.SetPhase("running tests");
                     System.Console.WriteLine($"Discovered {dcp.TotalTests} tests");
