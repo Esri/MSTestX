@@ -103,7 +103,7 @@ try {
     if ($PackageId -eq 'MSTestX.UnitTestRunner') {
         Invoke-DotNet (@('workload', 'restore', $projectPath) + $properties)
     }
-    Invoke-DotNet (@('restore', $projectPath) + $properties)
+    Invoke-DotNet (@('restore', $ProjectPath, '-p:Configuration=Release') + $properties)
     Invoke-DotNet (@('pack', $projectPath, '--configuration', 'Release', '--no-restore',
         '--output', $fullOutputDirectory) + $properties)
 }

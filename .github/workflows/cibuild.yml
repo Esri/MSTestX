@@ -42,11 +42,8 @@ jobs:
         run: |
           dotnet workload restore src/MSTestX.sln
           if ($LASTEXITCODE -ne 0) { throw 'Workload restore failed.' }
-          dotnet restore src/MSTestX.sln
-          if ($LASTEXITCODE -ne 0) { throw 'Solution restore failed.' }
           dotnet build src/MSTestX.sln `
             --configuration Release `
-            --no-restore `
             -p:SkipWindows=true `
             -p:ContinuousIntegrationBuild=true `
             -p:GeneratePackageOnBuild=false
