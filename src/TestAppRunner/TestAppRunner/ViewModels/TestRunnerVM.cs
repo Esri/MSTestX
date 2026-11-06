@@ -72,14 +72,15 @@ namespace TestAppRunner.ViewModels
             }
         }
 
+        // Shows a message in the status title and the device log. The runner doesn't use a toast library,
+        // because a library built against one MAUI version can fail to load in apps that use another.
         internal static void ShowToast(string text)
         {
+            Console.WriteLine("MSTestX: " + text);
             Application.Current.Dispatcher.Dispatch(() =>
             {
-                var duration = CommunityToolkit.Maui.Core.ToastDuration.Long;
-                double fontSize = 14;
-                var toast = CommunityToolkit.Maui.Alerts.Toast.Make(text, duration, fontSize);
-                _ = toast.Show();
+                Instance.Status = text;
+                Instance.OnPropertyChanged(nameof(Status));
             });
         }
 

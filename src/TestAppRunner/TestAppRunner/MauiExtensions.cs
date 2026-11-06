@@ -14,7 +14,6 @@
 
 #if MAUI
 #nullable enable
-using CommunityToolkit.Maui;
 using Microsoft.Maui.Controls.Hosting;
 using Microsoft.Maui.Hosting;
 using Microsoft.Maui.LifecycleEvents;
@@ -50,7 +49,6 @@ namespace MSTestX
         public static MauiAppBuilder UseTestApp<T>(this MauiAppBuilder builder, Func<TestOptions, TestOptions>? configureTestOptions = null) where T : RunnerApp
         {
             return builder.UseMauiApp<T>()
-                .UseMauiCommunityToolkit()
                 .ConfigureLifecycleEvents((events) =>
                 {
 #if __ANDROID__
