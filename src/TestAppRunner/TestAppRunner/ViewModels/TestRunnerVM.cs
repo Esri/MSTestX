@@ -72,14 +72,15 @@ namespace TestAppRunner.ViewModels
             }
         }
 
+        // Shows a message in the status title and the device log. The runner doesn't use a toast library,
+        // because a library built against one MAUI version can fail to load in apps that use another.
         internal static void ShowToast(string text)
         {
+            Console.WriteLine("MSTestX: " + text);
             Application.Current.Dispatcher.Dispatch(() =>
             {
-                var duration = CommunityToolkit.Maui.Core.ToastDuration.Long;
-                double fontSize = 14;
-                var toast = CommunityToolkit.Maui.Alerts.Toast.Make(text, duration, fontSize);
-                _ = toast.Show();
+                Instance.Status = text;
+                Instance.OnPropertyChanged(nameof(Status));
             });
         }
 
@@ -108,14 +109,13 @@ namespace TestAppRunner.ViewModels
         {
             OnPropertyChanged(nameof(Status));
             //TODO: Get iOS mlaunch port number
-            var conn = new TestAdapterConnection(port);
+            connection = new TestAdapterConnection(port);
             if (!string.IsNullOrEmpty(Settings.RemoteHost))
                 PingHost(Settings.RemoteHost);
 
             try
             {
-                await conn.StartAsync();
-                connection = conn;
+                await connection.StartAsync();
                 ShowToast("Remote test adapter connected!");
             }
             catch (System.Exception ex)
@@ -134,7 +134,9 @@ namespace TestAppRunner.ViewModels
                 {
                     var tests = new Dictionary<Guid, TestResultVM>();
                     var asm = this.Settings.TestAssemblies ?? AppDomain.CurrentDomain.GetAssemblies().Where(c => !c.IsDynamic).ToArray();
-                    var references = asm.Select(c => System.IO.Path.GetFileName(c.Location)).ToArray();
+                    var references = asm.Select(c => string.IsNullOrEmpty(c.Location)
+                        ? $"{c.GetName().Name}.dll"
+                        : System.IO.Path.GetFileName(c.Location)).ToArray();
                     testRunner = new TestRunner(references, this);
                     foreach (var item in testRunner.Tests)
                     {

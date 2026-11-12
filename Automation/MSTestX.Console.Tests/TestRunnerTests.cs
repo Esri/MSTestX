@@ -366,6 +366,26 @@ public class TestRunnerTests
     }
 
     [TestMethod]
+    public void CompletedAssertionFailures_PreserveSuccessfulProcessContract()
+    {
+        var completion = new TestRunCompleteEventArgs(
+            new TestRunStatistics(
+                executedTests: 2,
+                new Dictionary<TestOutcome, long>
+                {
+                    [TestOutcome.Passed] = 1,
+                    [TestOutcome.Failed] = 1
+                }),
+            false,
+            false,
+            null,
+            null,
+            TimeSpan.FromSeconds(1));
+
+        Assert.IsFalse(TestRunner.IsUnsuccessfulCompletion(completion));
+    }
+
+    [TestMethod]
     public void TestRunCompletedWithErrorException_UsesCompletionFailureMessage()
     {
         var completion = new TestRunCompleteEventArgs(
